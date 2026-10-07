@@ -20,6 +20,6 @@ port="$(sed -n 's/^PORT=//p' <<< "$ep")"
 job="$(sed -n 's/^JOB_ID=//p' <<< "$ep")"
 
 echo "localhost:$local_port -> $node:$port (job $job). Ctrl-C to close."
-# Hop through the login node into the compute node so this works even if the
-# server only binds 127.0.0.1 there.
-exec ssh -N -J "$login" -L "$local_port:localhost:$port" "$OSC_USER@$node"
+# OSC's start helpers bind 0.0.0.0, so the login node can reach node:port
+# directly; no SSH into the compute node needed.
+exec ssh -N -o ExitOnForwardFailure=yes -L "$local_port:$node:$port" "$login"
