@@ -17,7 +17,8 @@ fi
 echo "OLLAMA_MODELS=${OLLAMA_MODELS:-<module default>}"
 nvidia-smi --query-gpu=name,memory.total --format=csv || true
 
-ollama_start
+# `ollama_start` is an interactive alias for this; aliases don't expand in scripts.
+source ollama_start_helper
 : "${OLLAMA_PORT:?ollama_start did not set OLLAMA_PORT}"
 wait_http "http://localhost:$OLLAMA_PORT/api/tags"
 
