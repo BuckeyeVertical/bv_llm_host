@@ -1,0 +1,34 @@
+# Shared helpers for server jobs. Sourced by slurm/*.sbatch.
+
+STATE_DIR="$HOME/.bv_llm_host"
+
+# publish_endpoint <backend> <port>
+# Writes ~/.bv_llm_host/<backend>.endpoint so scripts/tunnel.sh can find the
+# server, and removes it again when the job exits.
+publish_endpoint() {
+  mkdir -p "$STATE_DIR"
+  ENDPOINT_FILE="$STATE_DIR/$1.endpoint"
+  printf 'NODE=%s\nPORT=%s\nJOB_ID=%s\n' "$(hostname -s)" "$2" "$SLURM_JOB_ID" > "$ENDPOINT_FILE"
+  echo "endpoint: $(hostname -s):$2 -> $ENDPOINT_FILE"
+}
+
+# wait_http <url> [timeout_s]
+wait_http() {
+  local url=$1 timeout=${2:-120}
+  for ((i = 0; i < timeout; i++)); do
+    curl -sf "$url" > /dev/null && return 0
+    sleep 1
+  done
+  echo "timed out waiting for $url" >&2
+  return 1
+}
+
+# serve_forever <stop_cmd>
+# Blocks until the job is cancelled or hits walltime, then runs stop_cmd.
+serve_forever() {
+  trap "$1; rm -f \"\$ENDPOINT_FILE\"" EXIT
+  trap 'exit 0' TERM INT
+  echo "serving until walltime or scancel $SLURM_JOB_ID"
+  sleep infinity &
+  wait $!
+}
