@@ -25,10 +25,12 @@ fi
 echo "vllm: $(command -v vllm)  HF_HOME=$HF_HOME"
 nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv || true
 
-# Pre-Ampere GPUs (V100 = 7.0) have no bf16.
+# Pre-Ampere GPUs (V100 = 7.0): no bf16, and the Triton prefix-prefill kernel
+# used by chunked prefill / prefix caching fails to compile.
 cap="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)"
-if [[ "${cap%%.*}" -lt 8 && "$VLLM_ARGS" != *--dtype* ]]; then
-  VLLM_ARGS="--dtype half $VLLM_ARGS"
+if [[ "${cap%%.*}" -lt 8 ]]; then
+  [[ "$VLLM_ARGS" == *--dtype* ]] || VLLM_ARGS="--dtype half $VLLM_ARGS"
+  VLLM_ARGS="--no-enable-chunked-prefill --no-enable-prefix-caching $VLLM_ARGS"
 fi
 
 # shellcheck disable=SC2086  # VLLM_ARGS is intentionally word-split
