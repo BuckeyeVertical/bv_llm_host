@@ -13,6 +13,11 @@ backend="${1:?usage: submit.sh <backend> [sbatch args...]}"; shift
 job="$ROOT/slurm/$backend.sbatch"
 [[ -f "$job" ]] || { echo "no job script: $job" >&2; exit 1; }
 
+# Remembered so a job can resubmit itself with the same args (AUTO_RESUBMIT=1).
+export BACKEND="$backend" SUBMIT_ARGS="$*"
+extra=()
+[[ "${AUTO_RESUBMIT:-0}" == 1 ]] && extra+=(--signal=B:USR1@600)
+
 mkdir -p "$ROOT/logs"
 sbatch \
   --account="$OSC_ACCOUNT" \
@@ -20,4 +25,4 @@ sbatch \
   --gpus-per-node="$GPUS" \
   --output="$ROOT/logs/%x-%j.out" \
   --export=ALL,REPO_ROOT="$ROOT" \
-  "$@" "$job"
+  ${extra[@]+"${extra[@]}"} "$@" "$job"

@@ -1,6 +1,13 @@
 # Shared helpers for server jobs. Sourced by slurm/*.sbatch.
 
 STATE_DIR="$HOME/.bv_llm_host"
+SECRETS_FILE="$STATE_DIR/secrets.env"   # TS_AUTHKEY, VLLM_API_KEY; chmod 600, never in git
+
+# load_secrets: export whatever secrets.env defines (silently, so nothing hits the log).
+load_secrets() {
+  [[ -f "$SECRETS_FILE" ]] || return 0
+  set -a; source "$SECRETS_FILE"; set +a
+}
 
 # publish_endpoint <backend> <port>
 # Writes ~/.bv_llm_host/<backend>.endpoint so scripts/tunnel.sh can find the
@@ -40,12 +47,59 @@ wait_http() {
   return 1
 }
 
+# expose_funnel <port>
+# Publishes localhost:<port> at https://$TS_HOSTNAME.<tailnet>.ts.net via
+# Tailscale Funnel. tailscaled runs in userspace mode (no root); its state
+# persists in $STATE_DIR/tailscale, so every job comes back on the same URL.
+expose_funnel() {
+  local port=$1 dir="$STATE_DIR/tailscale"
+  local sock="$dir/tailscaled.sock"
+  : "${TS_AUTHKEY:?TS_AUTHKEY missing from $SECRETS_FILE}"
+  mkdir -p "$dir"
+  "$TAILSCALE_DIR/tailscaled" --tun=userspace-networking \
+    --statedir="$dir" --socket="$sock" > "$dir/tailscaled.log" 2>&1 &
+  TAILSCALED_PID=$!
+  for _ in {1..30}; do [[ -S "$sock" ]] && break; sleep 1; done
+  local ts=("$TAILSCALE_DIR/tailscale" --socket="$sock")
+  # Pass the key by file so it doesn't show up in `ps` on a shared node.
+  (umask 077; printf '%s' "$TS_AUTHKEY" > "$dir/authkey")
+  "${ts[@]}" up --auth-key="file:$dir/authkey" --hostname="$TS_HOSTNAME"
+  "${ts[@]}" funnel --bg "$port"
+  PUBLIC_URL="https://$("${ts[@]}" status --json \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
+  echo "public: $PUBLIC_URL/v1"
+}
+
+# take_over_from <job_id>
+# A successor job calls this once its server is ready: stop the predecessor so
+# it releases the shared Tailscale identity, then wait until it is gone.
+take_over_from() {
+  [[ -n "$1" ]] || return 0
+  echo "taking over from job $1"
+  scancel "$1" || true
+  while squeue -h -j "$1" 2>/dev/null | grep -q .; do sleep 2; done
+}
+
+# resubmit <this_job_id>
+# Queues a successor with the same backend and sbatch args. Fired by
+# --signal=B:USR1 shortly before walltime when AUTO_RESUBMIT=1.
+resubmit() {
+  echo "near walltime: submitting successor"
+  # Drop this job's SLURM_* vars so they don't leak into the new job.
+  # shellcheck disable=SC2046,SC2086  # intentional word-splitting
+  ( unset $(compgen -e | grep '^SLURM_')
+    PREV_JOB_ID=$1 "$REPO_ROOT/scripts/submit.sh" "$BACKEND" $SUBMIT_ARGS )
+}
+
 # serve_forever <stop_cmd>
 # Blocks until the job is cancelled or hits walltime, then runs stop_cmd.
 serve_forever() {
-  trap "$1; rm -f \"\$ENDPOINT_FILE\"" EXIT
+  trap "$1; [[ -n \"\$TAILSCALED_PID\" ]] && kill \$TAILSCALED_PID; rm -f \"\$ENDPOINT_FILE\"" EXIT
   trap 'exit 0' TERM INT
+  trap "resubmit $SLURM_JOB_ID" USR1
   echo "serving until walltime or scancel $SLURM_JOB_ID"
   sleep infinity &
-  wait $!
+  local sleeper=$!
+  # A trapped signal (USR1) interrupts `wait`; keep waiting until the job ends.
+  while kill -0 "$sleeper" 2>/dev/null; do wait "$sleeper" || true; done
 }

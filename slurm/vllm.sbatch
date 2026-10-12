@@ -7,6 +7,7 @@
 
 set -eo pipefail
 source "$REPO_ROOT/slurm/common.sh"
+load_secrets   # vllm reads VLLM_API_KEY from the env and then requires it on /v1/*
 
 # OSC's vllm module where it exists (Cardinal, Ascend); otherwise our own venv (Pitzer).
 if module is-avail "vllm/$VLLM_VERSION" 2>/dev/null; then
@@ -47,10 +48,15 @@ else
   pid=$!
   stop_cmd="kill $pid"
 fi
-wait_http "http://localhost:$VLLM_API_PORT/v1/models" 900 "$pid"
+wait_http "http://localhost:$VLLM_API_PORT/health" 900 "$pid"
 
 echo "available models:"
-curl -s "http://localhost:$VLLM_API_PORT/v1/models"; echo
+curl -s -H "Authorization: Bearer ${VLLM_API_KEY:-none}" "http://localhost:$VLLM_API_PORT/v1/models"; echo
 
+take_over_from "$PREV_JOB_ID"
 publish_endpoint vllm "$VLLM_API_PORT"
+if [[ "$EXPOSE" == funnel ]]; then
+  : "${VLLM_API_KEY:?refusing to expose publicly without VLLM_API_KEY in $SECRETS_FILE}"
+  expose_funnel "$VLLM_API_PORT"
+fi
 serve_forever "$stop_cmd"
