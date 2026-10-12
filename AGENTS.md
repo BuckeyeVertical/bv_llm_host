@@ -10,7 +10,6 @@ ssh <user>@<cluster>.osc.edu '<command>'      # one-off command
 ```
 
 Clusters: Cardinal (H100), Ascend (A100), Pitzer (V100). GPU availability is usually Pitzer > Ascend > Cardinal, so submit on Pitzer when possible and fall back in that order.
-OSC's Ollama and vLLM modules are only on Cardinal and Ascend (Pitzer: `module spider` finds neither), so Pitzer needs a self-provided server.
 
 User, project, and cluster live in `config.env` (per-machine, gitignored; template in `config.env.example`).
 
