@@ -1,4 +1,4 @@
-# Running the LLM server
+# Running the vLLM server
 
 How to bring the shared vLLM server up on OSC and use it. One-time setup is already
 done (see [One-time setup](#one-time-setup) if something is missing).
@@ -31,6 +31,37 @@ EXPOSE=funnel VLLM_MODEL=Qwen/Qwen3-0.6B scripts/submit.sh vllm --time=04:00:00
 On Pitzer the GPU may be a 16 GB V100; for models over ~12 GB in fp16, request
 `--gres=gpu:v100-32g:1`. Centrally cached models: `ls /fs/ess/pub_data/vllm/.cache/huggingface/hub`.
 
+For agents that call tools, enable vLLM's tool-call parser for the model (`hermes` for Qwen3,
+`qwen3_coder` for Qwen3-Coder); without it tool calls come back as plain text:
+
+```bash
+EXPOSE=funnel VLLM_ARGS="--enable-auto-tool-choice --tool-call-parser hermes" scripts/submit.sh vllm
+```
+
+## The URL and the key
+
+| Setting | Value |
+|---|---|
+| Base URL | `https://bv-llm.tail43a32e.ts.net/v1` |
+| API key | `VLLM_API_KEY` in `~/.bv_llm_host/secrets.env` on OSC |
+| Model | whatever the current job serves; read it from `/v1/models` |
+
+The URL stays the same across jobs: every job reuses the Tailscale identity saved in
+`~/.bv_llm_host/tailscale` on OSC. It is also printed as the `public:` line in each job log and
+shown under Machines → `bv-llm` in the Tailscale admin console. It only changes if:
+
+- that state dir is deleted (the job registers anew; if the old `bv-llm` machine still exists
+  in the console, the new one becomes `bv-llm-1`, so delete the old one first),
+- `TS_HOSTNAME` in `config.env` changes, or
+- the tailnet is renamed (the `tail43a32e` part).
+
+If the machine's key expires, the URL stops working until it is re-authorized; disable key
+expiry on `bv-llm` in the admin console to avoid that.
+
+The key is the only thing keeping strangers out. Share it privately, never in a repo. Clients
+pass it as an OpenAI-style bearer token, so OpenAI SDKs take it as `OPENAI_API_KEY`. It is not
+an OpenAI account key, and nothing goes to OpenAI.
+
 ## Use it (from anywhere)
 
 No OSC account or Tailscale needed. Get the API key from whoever runs the server.
@@ -52,6 +83,21 @@ print(client.models.list().data[0].id)   # the model currently served
 | `401 Unauthorized` | Server is up; key missing or wrong (a browser always gets this) |
 | Can't resolve / connect | No job is serving, or it just started; check `squeue` |
 | Empty `content` | Qwen3 spent `max_tokens` thinking; raise it or add `/no_think` |
+
+### From bv_llm_sdk
+
+The agent's `openai` backend works as-is; configure it with environment variables (or the
+matching `bv-agent` flags):
+
+```bash
+export BV_AGENT_BACKEND=openai
+export BV_AGENT_BASE_URL=https://bv-llm.tail43a32e.ts.net/v1
+export BV_AGENT_MODEL=Qwen/Qwen3-8B      # must match the served model
+export OPENAI_API_KEY=<VLLM_API_KEY>     # or BV_AGENT_API_KEY
+bv-agent
+```
+
+In Python, `AgentConfig.from_env()` reads the same `BV_AGENT_*` variables.
 
 ## Stop it
 
