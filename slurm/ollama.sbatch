@@ -41,7 +41,7 @@ else
   OLLAMA_PID=$!
 fi
 : "${OLLAMA_PORT:?ollama_start did not set OLLAMA_PORT}"
-wait_http "http://localhost:$OLLAMA_PORT/api/tags"
+wait_http "http://localhost:$OLLAMA_PORT/api/tags" 120 "$OLLAMA_PID"
 
 if [[ -n "$OLLAMA_MODELS_DIR" && -n "$OLLAMA_MODEL" ]]; then
   if [[ -n "$use_module" ]]; then

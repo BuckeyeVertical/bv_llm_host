@@ -37,13 +37,15 @@ if [[ -n "$use_module" ]]; then
   # The helper backgrounds `vllm serve` and sleeps 180s before returning.
   source vllm_start_helper "$VLLM_MODEL" $VLLM_ARGS
   : "${VLLM_API_PORT:?vllm failed to start}"
+  pid=$VLLM_PID
   stop_cmd=vllm_stop
 else
   VLLM_API_PORT="$(free_port)"
   vllm serve "$VLLM_MODEL" --host 0.0.0.0 --port "$VLLM_API_PORT" $VLLM_ARGS &
-  stop_cmd="kill $!"
+  pid=$!
+  stop_cmd="kill $pid"
 fi
-wait_http "http://localhost:$VLLM_API_PORT/v1/models" 900
+wait_http "http://localhost:$VLLM_API_PORT/v1/models" 900 "$pid"
 
 echo "available models:"
 curl -s "http://localhost:$VLLM_API_PORT/v1/models"; echo

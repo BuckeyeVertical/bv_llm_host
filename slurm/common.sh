@@ -24,11 +24,16 @@ free_port() {
   done
 }
 
-# wait_http <url> [timeout_s]
+# wait_http <url> [timeout_s] [pid]
+# Fails early if pid (the server process) exits before the url answers.
 wait_http() {
-  local url=$1 timeout=${2:-120}
+  local url=$1 timeout=${2:-120} pid=$3
   for ((i = 0; i < timeout; i++)); do
     curl -sf "$url" > /dev/null && return 0
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "server process $pid exited" >&2
+      return 1
+    fi
     sleep 1
   done
   echo "timed out waiting for $url" >&2
