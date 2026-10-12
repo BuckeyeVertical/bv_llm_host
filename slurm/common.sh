@@ -55,6 +55,7 @@ expose_funnel() {
   local port=$1 dir="$STATE_DIR/tailscale"
   local sock="$dir/tailscaled.sock"
   : "${TS_AUTHKEY:?TS_AUTHKEY missing from $SECRETS_FILE}"
+  claim_funnel || return 0
   mkdir -p "$dir"
   "$TAILSCALE_DIR/tailscaled" --tun=userspace-networking \
     --statedir="$dir" --socket="$sock" > "$dir/tailscaled.log" 2>&1 &
@@ -68,6 +69,27 @@ expose_funnel() {
   PUBLIC_URL="https://$("${ts[@]}" status --json \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
   echo "public: $PUBLIC_URL/v1"
+}
+
+# claim_funnel
+# Only one job may hold the Tailscale identity: two would fight over it (home,
+# and so the state dir, is shared by all clusters). The holder refreshes
+# $FUNNEL_OWNER every 30s; a fresh file held by anyone but our predecessor
+# means stay private.
+FUNNEL_OWNER="$STATE_DIR/funnel.owner"
+claim_funnel() {
+  if [[ -f "$FUNNEL_OWNER" ]]; then
+    local holder age
+    holder="$(cat "$FUNNEL_OWNER")"
+    age=$(( $(date +%s) - $(stat -c %Y "$FUNNEL_OWNER") ))
+    if (( age < 120 )) && [[ "$holder" != *":${PREV_JOB_ID:-none}" ]]; then
+      echo "funnel held by $holder; staying private (endpoint/tunnel still work)" >&2
+      return 1
+    fi
+  fi
+  echo "${SLURM_CLUSTER_NAME:-?}:$SLURM_JOB_ID" > "$FUNNEL_OWNER"
+  ( while :; do touch "$FUNNEL_OWNER"; sleep 30; done ) &
+  HEARTBEAT_PID=$!
 }
 
 # take_over_from <job_id>
@@ -91,10 +113,19 @@ resubmit() {
     PREV_JOB_ID=$1 "$REPO_ROOT/scripts/submit.sh" "$BACKEND" $SUBMIT_ARGS )
 }
 
+# release_funnel: stop tailscaled and give up the claim if it is still ours.
+release_funnel() {
+  [[ -n "$TAILSCALED_PID" ]] && kill "$TAILSCALED_PID" 2>/dev/null
+  [[ -n "$HEARTBEAT_PID" ]] || return 0
+  kill "$HEARTBEAT_PID" 2>/dev/null
+  [[ "$(cat "$FUNNEL_OWNER" 2>/dev/null)" == *":$SLURM_JOB_ID" ]] && rm -f "$FUNNEL_OWNER"
+  return 0
+}
+
 # serve_forever <stop_cmd>
 # Blocks until the job is cancelled or hits walltime, then runs stop_cmd.
 serve_forever() {
-  trap "$1; [[ -n \"\$TAILSCALED_PID\" ]] && kill \$TAILSCALED_PID; rm -f \"\$ENDPOINT_FILE\"" EXIT
+  trap "$1; release_funnel; rm -f \"\$ENDPOINT_FILE\"" EXIT
   trap 'exit 0' TERM INT
   trap "resubmit $SLURM_JOB_ID" USR1
   echo "serving until walltime or scancel $SLURM_JOB_ID"

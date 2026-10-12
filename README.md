@@ -66,5 +66,22 @@ Env vars override config.env per submit: `VLLM_MODEL=Qwen/Qwen3-0.6B scripts/sub
 Multi-GPU: `scripts/submit.sh vllm --gpus-per-node=2` with
 `VLLM_ARGS="--tensor-parallel-size 2 --disable_custom_all_reduce"`.
 
+## Public access (no OSC account needed)
+
+```bash
+EXPOSE=funnel scripts/submit.sh vllm                    # OSC
+EXPOSE=funnel AUTO_RESUBMIT=1 scripts/submit.sh vllm    # keep it up across walltimes
+```
+
+The job joins Tailscale (userspace, no root) and publishes vLLM via Funnel at
+`https://$TS_HOSTNAME.<tailnet>.ts.net/v1`. Clients need only that URL and the API key;
+no Tailscale or OSC login. Requires `~/.bv_llm_host/secrets.env` on OSC (chmod 600)
+with `TS_AUTHKEY` and `VLLM_API_KEY`, and the static Tailscale binaries in `TAILSCALE_DIR`.
+
+- Only one job holds the URL at a time (`~/.bv_llm_host/funnel.owner`, refreshed every 30s);
+  other jobs stay private. With `AUTO_RESUBMIT=1` the successor takes over once loaded.
+- Ollama is never exposed: it has no auth.
+- A brand-new Funnel name can take several minutes before public DNS and its TLS cert work.
+
 Tip: `tunnel.sh` makes two SSH hops; an `ssh` ControlMaster for
 `*.osc.edu` saves re-authenticating.
