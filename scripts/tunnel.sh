@@ -18,8 +18,14 @@ ep="$(ssh "$login" cat ".bv_llm_host/$backend.endpoint" 2>/dev/null)" \
 node="$(sed -n 's/^NODE=//p' <<< "$ep")"
 port="$(sed -n 's/^PORT=//p' <<< "$ep")"
 job="$(sed -n 's/^JOB_ID=//p' <<< "$ep")"
+# The job may run on another cluster than OSC_CLUSTER (home is shared, so the
+# endpoint file is visible everywhere); tunnel through that cluster's login.
+cluster="$(sed -n 's/^CLUSTER=//p' <<< "$ep")"
+if [[ -n "$cluster" && "$cluster" != "$OSC_CLUSTER" ]]; then
+  login="$OSC_USER@$cluster.osc.edu"
+fi
 
-echo "localhost:$local_port -> $node:$port (job $job). Ctrl-C to close."
+echo "localhost:$local_port -> ${cluster:-$OSC_CLUSTER} $node:$port (job $job). Ctrl-C to close."
 # OSC's start helpers bind 0.0.0.0, so the login node can reach node:port
 # directly; no SSH into the compute node needed.
 exec ssh -N -o ExitOnForwardFailure=yes -L "$local_port:$node:$port" "$login"

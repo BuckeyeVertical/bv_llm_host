@@ -8,8 +8,11 @@ STATE_DIR="$HOME/.bv_llm_host"
 publish_endpoint() {
   mkdir -p "$STATE_DIR"
   ENDPOINT_FILE="$STATE_DIR/$1.endpoint"
-  printf 'NODE=%s\nPORT=%s\nJOB_ID=%s\n' "$(hostname -s)" "$2" "$SLURM_JOB_ID" > "$ENDPOINT_FILE"
-  echo "endpoint: $(hostname -s):$2 -> $ENDPOINT_FILE"
+  # CLUSTER lets tunnel.sh go through the right login node: home is shared
+  # across OSC clusters, so this file is visible from all of them.
+  printf 'NODE=%s\nPORT=%s\nJOB_ID=%s\nCLUSTER=%s\n' \
+    "$(hostname -s)" "$2" "$SLURM_JOB_ID" "${SLURM_CLUSTER_NAME:-}" > "$ENDPOINT_FILE"
+  echo "endpoint: ${SLURM_CLUSTER_NAME:-?} $(hostname -s):$2 -> $ENDPOINT_FILE"
 }
 
 # wait_http <url> [timeout_s]

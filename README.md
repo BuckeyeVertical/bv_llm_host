@@ -46,5 +46,19 @@ scancel <jobid>
 By default the job uses OSC's central read-only model store. To pull your own
 models, set `OLLAMA_MODELS_DIR` (project storage, not home) and `OLLAMA_MODEL`.
 
+## vLLM
+
+Same flow, backend `vllm`, local port 8000:
+
+```bash
+scripts/submit.sh vllm                 # OSC; ~3-5 min until the endpoint line appears
+scripts/tunnel.sh vllm                 # laptop: localhost:8000 -> compute node
+scripts/smoke_test.sh Qwen/Qwen3-8B http://localhost:8000/v1
+```
+
+Models come from OSC's central Hugging Face cache unless `VLLM_HF_HOME` is set.
+Multi-GPU: `scripts/submit.sh vllm --gpus-per-node=2` with
+`VLLM_ARGS="--tensor-parallel-size 2 --disable_custom_all_reduce"`.
+
 Tip: `tunnel.sh` makes two SSH hops; an `ssh` ControlMaster for
 `*.osc.edu` saves re-authenticating.
