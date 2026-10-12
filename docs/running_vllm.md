@@ -28,6 +28,23 @@ Per-submit overrides (anything in `config.env`):
 EXPOSE=funnel VLLM_MODEL=Qwen/Qwen3-0.6B scripts/submit.sh vllm --time=04:00:00
 ```
 
+### Keeping it up on the 1-hour debug queues
+
+The debug queues (Cardinal `debug` H100, Ascend `debug-nextgen`/`debug-quad` A100, Pitzer
+`gpudebug` V100) start fast but cap jobs at 1 h and 2 running jobs per user. `AUTO_RESUBMIT=1`
+chains jobs: 10 min before walltime a job queues its successor, which loads its model while
+the old one keeps serving, then cancels it and takes over the same URL.
+
+```bash
+JOB_TIME=01:00:00 EXPOSE=funnel AUTO_RESUBMIT=1 scripts/submit.sh vllm --partition=debug
+scancel -u $USER -n vllm      # stop the chain (running job and any queued successor)
+```
+
+Tested on Cardinal `debug`: a handoff costs ~1-2 min of public downtime when the successor
+starts before the old job's walltime. If it waits in the queue past that, the URL is down
+until it starts and loads. Keep both debug slots free for the handoff, and remember the chain
+bills until you cancel it (~$2.75/day per GPU).
+
 On Pitzer the GPU may be a 16 GB V100; for models over ~12 GB in fp16, request
 `--gres=gpu:v100-32g:1`. Centrally cached models: `ls /fs/ess/pub_data/vllm/.cache/huggingface/hub`.
 
