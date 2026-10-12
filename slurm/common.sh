@@ -53,7 +53,9 @@ wait_http() {
 # persists in $STATE_DIR/tailscale, so every job comes back on the same URL.
 expose_funnel() {
   local port=$1 dir="$STATE_DIR/tailscale"
-  local sock="$dir/tailscaled.sock"
+  # Socket on node-local disk: in the shared state dir, one job's tailscaled
+  # removes it on exit and orphans any other job's daemon.
+  local sock="${TMPDIR:-/tmp}/tailscaled-$SLURM_JOB_ID.sock"
   : "${TS_AUTHKEY:?TS_AUTHKEY missing from $SECRETS_FILE}"
   claim_funnel || return 0
   mkdir -p "$dir"
