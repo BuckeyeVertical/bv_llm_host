@@ -20,7 +20,7 @@ User, project, and cluster live in `config.env` (per-machine, gitignored; templa
 - Change code locally, push, then `git pull` on the OSC checkout.
 - Cancel jobs when done; they hold GPUs until walltime.
 - The OSC checkout, `config.env`, and `~/.bv_llm_host/` are shared by every cluster and every session. Don't change shared config for one test; set overrides per submit (`EXPOSE=funnel scripts/submit.sh vllm`).
-- vLLM jobs always require `VLLM_API_KEY` from `~/.bv_llm_host/secrets.env` (servers bind `0.0.0.0`), even with `EXPOSE=none`. Clients send it as `OPENAI_API_KEY`; never print it.
+- Public vLLM jobs (`EXPOSE=funnel`) require `VLLM_API_KEY` from `~/.bv_llm_host/secrets.env`; clients send it as `OPENAI_API_KEY`, never print it. Private jobs (`EXPOSE=none`, the default) need no key.
 - Running guide: `docs/running_vllm.md`.
 
 ## OSC notes

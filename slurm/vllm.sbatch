@@ -7,7 +7,10 @@
 
 set -eo pipefail
 source "$REPO_ROOT/slurm/common.sh"
-load_secrets   # vllm reads VLLM_API_KEY from the env and then requires it on /v1/*
+load_secrets
+# vllm reads VLLM_API_KEY from the env and then requires it on /v1/*. Only public
+# (funnel) jobs need that; private jobs stay keyless.
+[[ "$EXPOSE" == funnel ]] || unset VLLM_API_KEY
 
 # OSC's vllm module where it exists (Cardinal, Ascend); otherwise our own venv (Pitzer).
 if module is-avail "vllm/$VLLM_VERSION" 2>/dev/null; then

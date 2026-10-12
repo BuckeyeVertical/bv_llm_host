@@ -43,7 +43,7 @@ EXPOSE=funnel VLLM_ARGS="--enable-auto-tool-choice --tool-call-parser hermes" sc
 | Setting | Value |
 |---|---|
 | Base URL | `https://bv-llm.tail43a32e.ts.net/v1` |
-| API key | `VLLM_API_KEY` in `~/.bv_llm_host/secrets.env` on OSC |
+| API key | `VLLM_API_KEY` in `~/.bv_llm_host/secrets.env` on OSC (public jobs only) |
 | Model | whatever the current job serves; read it from `/v1/models` |
 
 The URL stays the same across jobs: every job reuses the Tailscale identity saved in
@@ -110,11 +110,12 @@ GPU time bills to PAS3560 (~$0.09/GPU-hour + $0.003/core-hour) until walltime. C
 
 ## Private use (no public URL)
 
-Submit without `EXPOSE=funnel`, then tunnel from a laptop that has OSC SSH access:
+Submit without `EXPOSE=funnel`, then tunnel from a laptop that has OSC SSH access. Private
+jobs need no API key (anyone on OSC's internal network could reach them, which is accepted):
 
 ```bash
 scripts/tunnel.sh vllm                                   # laptop: localhost:8000 -> job
-OPENAI_API_KEY=$KEY scripts/smoke_test.sh <model> http://localhost:8000/v1
+scripts/smoke_test.sh <model> http://localhost:8000/v1
 ```
 
 ## One-time setup
