@@ -115,6 +115,13 @@ resubmit() {
     PREV_JOB_ID=$1 "$REPO_ROOT/scripts/submit.sh" "$BACKEND" $SUBMIT_ARGS )
 }
 
+# release_endpoint: remove the endpoint file only if a newer job hasn't overwritten it.
+release_endpoint() {
+  [[ -n "$ENDPOINT_FILE" ]] && grep -qx "JOB_ID=$SLURM_JOB_ID" "$ENDPOINT_FILE" 2>/dev/null \
+    && rm -f "$ENDPOINT_FILE"
+  return 0
+}
+
 # release_funnel: stop tailscaled and give up the claim if it is still ours.
 release_funnel() {
   [[ -n "$TAILSCALED_PID" ]] && kill "$TAILSCALED_PID" 2>/dev/null
@@ -127,7 +134,7 @@ release_funnel() {
 # serve_forever <stop_cmd>
 # Blocks until the job is cancelled or hits walltime, then runs stop_cmd.
 serve_forever() {
-  trap "$1; release_funnel; rm -f \"\$ENDPOINT_FILE\"" EXIT
+  trap "$1; release_funnel; release_endpoint" EXIT
   trap 'exit 0' TERM INT
   trap "resubmit $SLURM_JOB_ID" USR1
   echo "serving until walltime or scancel $SLURM_JOB_ID"
