@@ -67,6 +67,10 @@ expose_funnel() {
   # Pass the key by file so it doesn't show up in `ps` on a shared node.
   (umask 077; printf '%s' "$TS_AUTHKEY" > "$dir/authkey")
   "${ts[@]}" up --auth-key="file:$dir/authkey" --hostname="$TS_HOSTNAME"
+  # The state dir restores the previous job's serve config (old port); the public
+  # relay can stay stuck on it, so clear it before publishing the new port.
+  "${ts[@]}" funnel reset
+  sleep 2
   "${ts[@]}" funnel --bg "$port"
   PUBLIC_URL="https://$("${ts[@]}" status --json \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
