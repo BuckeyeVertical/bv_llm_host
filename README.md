@@ -57,6 +57,10 @@ scripts/smoke_test.sh Qwen/Qwen3-8B http://localhost:8000/v1
 ```
 
 Models come from OSC's central Hugging Face cache unless `VLLM_HF_HOME` is set.
+Where OSC has no vllm module (Pitzer), the job activates `VLLM_VENV` instead, a venv
+you build once with `uv venv` + `uv pip install vllm==<ver>`. Pick a vllm built for
+CUDA 12 for V100s; `--dtype half` is added automatically on pre-Ampere GPUs.
+Env vars override config.env per submit: `VLLM_MODEL=Qwen/Qwen3-0.6B scripts/submit.sh vllm`.
 Multi-GPU: `scripts/submit.sh vllm --gpus-per-node=2` with
 `VLLM_ARGS="--tensor-parallel-size 2 --disable_custom_all_reduce"`.
 

@@ -15,6 +15,15 @@ publish_endpoint() {
   echo "endpoint: ${SLURM_CLUSTER_NAME:-?} $(hostname -s):$2 -> $ENDPOINT_FILE"
 }
 
+# free_port: a random unused high port (same scheme as OSC's start helpers).
+free_port() {
+  local port
+  while :; do
+    port=$(shuf -i 49152-65535 -n 1)
+    ss -tuln | grep -q ":$port " || { echo "$port"; return; }
+  done
+}
+
 # wait_http <url> [timeout_s]
 wait_http() {
   local url=$1 timeout=${2:-120}

@@ -22,6 +22,7 @@ User, project, and cluster live in `config.env` (per-machine, gitignored; templa
 
 ## OSC notes
 
+- Where a cluster lacks the module, the job falls back to a self-installed venv (e.g. `VLLM_VENV`). Build venvs with `uv` in a CPU batch job: `ensurepip` hangs on scratch and login nodes cap CPU time.
 - Use OSC's modules (`module load <backend>/<version>`) and their helper scripts; check `module show` for what they set.
 - Module helpers may be shell aliases, which don't expand in batch scripts. Call the underlying script.
 - OSC's helpers bind servers to `0.0.0.0`, so tunnel to `node:port` via the login node rather than SSHing into compute nodes.
