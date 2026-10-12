@@ -5,9 +5,11 @@ Runs LLM inference servers on OSC GPU nodes and exposes them to a laptop over an
 ## OSC access
 
 ```bash
-ssh <user>@<cluster>.osc.edu                  # cluster: cardinal | ascend
+ssh <user>@<cluster>.osc.edu                  # cluster: cardinal | ascend | pitzer
 ssh <user>@<cluster>.osc.edu '<command>'      # one-off command
 ```
+
+Clusters: Cardinal (H100), Ascend (A100), Pitzer (V100). OSC's Ollama and vLLM modules are only on Cardinal and Ascend.
 
 User, project, and cluster live in `config.env` (per-machine, gitignored; template in `config.env.example`).
 
