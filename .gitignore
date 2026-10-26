@@ -223,3 +223,7 @@ __marimo__/
 config.env
 logs/
 /.claude
+
+# Local copies of secrets (TS_AUTHKEY, VLLM_API_KEY) and macOS cruft
+*.env
+.DS_Store

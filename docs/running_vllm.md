@@ -3,6 +3,9 @@
 How to bring the shared vLLM server up on OSC and use it. One-time setup is already
 done (see [One-time setup](#one-time-setup) if something is missing).
 
+- Preparing for an event (what to do the week and day before): [event_setup.md](event_setup.md)
+- Handout for people using the server: [connect.md](connect.md)
+
 ## What we serve
 
 | | |
@@ -95,8 +98,10 @@ bills until you cancel it (~$2.75/day per GPU). For an event, a regular `quad` j
 day or two ahead avoids handoffs entirely. Regular A100/H100 queues were 1.5-12 days out
 when we checked.
 
-Don't run test jobs while the public server is up. All vLLM jobs share
-`~/.bv_llm_host/vllm.endpoint`, and each deletes it when it exits.
+Avoid test jobs on Ascend debug while the public chain runs: they take one of the two debug
+slots the handoff needs. Test jobs elsewhere are fine with `EXPOSE=none`; they can't take the
+public URL. (`~/.bv_llm_host/vllm.endpoint` is shared, so a test job's endpoint replaces the
+server's for `tunnel.sh` until it exits.)
 
 ## How many people it handles
 
