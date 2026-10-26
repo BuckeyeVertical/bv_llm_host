@@ -79,7 +79,8 @@ no Tailscale or OSC login. Requires `~/.bv_llm_host/secrets.env` on OSC (chmod 6
 with `TS_AUTHKEY` and `VLLM_API_KEY`, and the static Tailscale binaries in `TAILSCALE_DIR`.
 
 - Only one job holds the URL at a time (`~/.bv_llm_host/funnel.owner`, refreshed every 30s);
-  other jobs stay private. With `AUTO_RESUBMIT=1` the successor takes over once loaded.
+  other public jobs serve privately until it is released, then take it. With `AUTO_RESUBMIT=1`
+  the successor takes over once loaded.
 - Ollama is never exposed: it has no auth.
 - A brand-new Funnel name can take several minutes before public DNS and its TLS cert work.
 

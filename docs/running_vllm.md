@@ -238,4 +238,4 @@ Notes:
 - `/fs/scratch` is purged of long-unused files. If the weights, venv or Tailscale binaries
   vanish, rebuild them, and check the weights the week before an event.
 - To rotate the API key: edit `secrets.env`, restart the job, tell the team.
-- Only one job holds the public URL at a time; others stay private.
+- Only one job holds the public URL at a time. Another public job serves privately until the URL is released, then takes it within ~1-2 min.

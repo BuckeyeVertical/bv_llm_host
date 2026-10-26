@@ -57,7 +57,12 @@ expose_funnel() {
   # removes it on exit and orphans any other job's daemon.
   local sock="${TMPDIR:-/tmp}/tailscaled-$SLURM_JOB_ID.sock"
   : "${TS_AUTHKEY:?TS_AUTHKEY missing from $SECRETS_FILE}"
-  claim_funnel || return 0
+  # If another job holds the URL (e.g. a dry run), keep serving privately and take
+  # the URL once it lets go, instead of staying private for the whole walltime.
+  if ! claim_funnel; then
+    echo "waiting for the public URL to be released" >&2
+    until claim_funnel 2>/dev/null; do sleep 60; done
+  fi
   mkdir -p "$dir"
   "$TAILSCALE_DIR/tailscaled" --tun=userspace-networking \
     --statedir="$dir" --socket="$sock" > "$dir/tailscaled.log" 2>&1 &
@@ -81,7 +86,7 @@ expose_funnel() {
 # Only one job may hold the Tailscale identity: two would fight over it (home,
 # and so the state dir, is shared by all clusters). The holder refreshes
 # $FUNNEL_OWNER every 30s; a fresh file held by anyone but our predecessor
-# means stay private.
+# means someone else has it (stale after 2 min if its job died uncleanly).
 FUNNEL_OWNER="$STATE_DIR/funnel.owner"
 claim_funnel() {
   if [[ -f "$FUNNEL_OWNER" ]]; then
@@ -89,7 +94,7 @@ claim_funnel() {
     holder="$(cat "$FUNNEL_OWNER")"
     age=$(( $(date +%s) - $(stat -c %Y "$FUNNEL_OWNER") ))
     if (( age < 120 )) && [[ "$holder" != *":${PREV_JOB_ID:-none}" ]]; then
-      echo "funnel held by $holder; staying private (endpoint/tunnel still work)" >&2
+      echo "funnel held by $holder" >&2
       return 1
     fi
   fi
