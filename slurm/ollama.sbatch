@@ -1,63 +1,63 @@
 #!/bin/bash
-#SBATCH --job-name=ollama
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-# Account, time, GPUs and log path are passed by scripts/submit.sh.
+# Submitted by scripts/serve.sh, which sets account, time, GPUs, name and log.
 
 set -eo pipefail
 source "$REPO_ROOT/slurm/common.sh"
 
-# Clusters without the module (pitzer) run the same Apptainer image the
-# module wraps, copied somewhere every cluster can read (OLLAMA_SIF).
+# Ollama runs from OSC's Apptainer image: the module's, or a copy (OLLAMA_SIF) on
+# clusters without the module (Pitzer).
 if module load "ollama/$OLLAMA_VERSION" 2>/dev/null; then
-  use_module=1
+  img="$OLLAMA_IMG"
 else
-  use_module=
-  : "${OLLAMA_SIF:?no ollama/$OLLAMA_VERSION module on this cluster; set OLLAMA_SIF in config.env (see README)}"
-  export OLLAMA_MODELS="${OLLAMA_MODELS:-/fs/ess/pub_data/ollama/models}"
+  img="${OLLAMA_SIF:?no ollama/$OLLAMA_VERSION module on this cluster; set OLLAMA_SIF (docs/notes.md)}"
 fi
 
-if [[ -n "$OLLAMA_MODELS_DIR" ]]; then
-  mkdir -p "$OLLAMA_MODELS_DIR"
-  export OLLAMA_MODELS="$OLLAMA_MODELS_DIR"
-fi
-echo "OLLAMA_MODELS=${OLLAMA_MODELS:-<module default>}"
-[[ -n "$use_module" ]] || echo "no module here; running $OLLAMA_SIF"
-nvidia-smi --query-gpu=name,memory.total --format=csv || true
-
-if [[ -n "$use_module" ]]; then
-  # `ollama_start` is an interactive alias for this; aliases don't expand in scripts.
-  source ollama_start_helper
-else
-  # What ollama_start_helper does: a free port, then the image on the GPU.
-  while :; do
-    OLLAMA_PORT=$(shuf -i 49152-65535 -n 1)
-    ss -ltn | grep -q ":$OLLAMA_PORT " || break
+# Models live in OLLAMA_CACHE. If OSC's shared store has this tag, link it in instead of
+# downloading: newer Ollama versions rewrite their store on startup, so they can't use
+# the read-only shared store directly.
+models="$OLLAMA_CACHE"
+mkdir -p "$models/blobs"
+repo="${MODEL%%:*}"; tag="${MODEL#*:}"
+[[ "$MODEL" == *:* ]] || tag=latest
+[[ "$repo" == */* ]] || repo="library/$repo"
+shared="$OSC_OLLAMA_MODELS/manifests/registry.ollama.ai/$repo/$tag"
+pull=1
+if [[ -f "$shared" ]]; then
+  mkdir -p "$models/manifests/registry.ollama.ai/$repo"
+  cp "$shared" "$models/manifests/registry.ollama.ai/$repo/$tag"
+  for digest in $(grep -o 'sha256:[0-9a-f]*' "$shared" | sort -u); do
+    ln -sfn "$OSC_OLLAMA_MODELS/blobs/${digest/:/-}" "$models/blobs/${digest/:/-}"
   done
-  apptainer run --nv --cleanenv \
-    --env "OLLAMA_MODELS=$OLLAMA_MODELS,OLLAMA_HOST=0.0.0.0:$OLLAMA_PORT,OLLAMA_FLASH_ATTENTION=1" \
-    "$OLLAMA_SIF" &
-  OLLAMA_PID=$!
-fi
-: "${OLLAMA_PORT:?ollama_start did not set OLLAMA_PORT}"
-wait_http "http://localhost:$OLLAMA_PORT/api/tags" 120 "$OLLAMA_PID"
-
-if [[ -n "$OLLAMA_MODELS_DIR" && -n "$OLLAMA_MODEL" ]]; then
-  if [[ -n "$use_module" ]]; then
-    ollama_pull "$OLLAMA_MODEL"
-  else
-    apptainer exec --cleanenv --env "OLLAMA_HOST=localhost:$OLLAMA_PORT" "$OLLAMA_SIF" \
-      ollama pull "$OLLAMA_MODEL"
-  fi
+  pull=
 fi
 
-echo "available models:"
-curl -s "http://localhost:$OLLAMA_PORT/api/tags"; echo
+# Pass the profile's OLLAMA_* server settings (e.g. OLLAMA_CONTEXT_LENGTH) into the
+# container; --cleanenv drops everything else. Keep the model loaded between requests.
+env="OLLAMA_MODELS=$models,OLLAMA_FLASH_ATTENTION=1,OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:--1}"
+for v in $(compgen -e | grep '^OLLAMA_'); do
+  case "$v" in
+    OLLAMA_VERSION|OLLAMA_SIF|OLLAMA_CACHE|OLLAMA_IMG|OLLAMA_MODELS|OLLAMA_HOST|OLLAMA_KEEP_ALIVE) ;;
+    *) env+=",$v=${!v}" ;;
+  esac
+done
 
-publish_endpoint ollama "$OLLAMA_PORT"
-if [[ -n "$use_module" ]]; then
-  serve_forever ollama_stop
-else
-  serve_forever "kill $OLLAMA_PID"
+echo "model:  $MODEL  (OLLAMA_MODELS=$models)"
+echo "image:  $img"
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+
+port="$(free_port)"
+apptainer run --nv --cleanenv --env "$env,OLLAMA_HOST=0.0.0.0:$port" "$img" &
+pid=$!
+wait_http "http://localhost:$port/api/tags" 300 "$pid"
+
+if [[ -n "$pull" ]]; then
+  apptainer exec --cleanenv --env "OLLAMA_HOST=localhost:$port" "$img" ollama pull "$MODEL"
 fi
+# Load the model onto the GPU now, so the first real request isn't slow.
+curl -sf "http://localhost:$port/api/generate" -d "{\"model\": \"$MODEL\"}" > /dev/null
+
+publish_endpoint "$port"
+serve_forever "kill $pid"

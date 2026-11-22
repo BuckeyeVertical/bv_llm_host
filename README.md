@@ -1,88 +1,112 @@
 # bv_llm_host
 
-Run LLM inference servers (Ollama, later vLLM) on OSC GPU nodes and reach them
-from your laptop over an SSH tunnel. Thin wrappers around OSC's own modules:
-[Ollama](https://www.osc.edu/resources/available_software/software_list/ollama),
-[vLLM](https://www.osc.edu/resources/available_software/software_list/vllm).
-
-```
-config.env.example   per-user settings (copy to config.env)
-slurm/common.sh      shared job helpers: publish endpoint, wait, serve until killed
-slurm/<backend>.sbatch
-scripts/submit.sh    [OSC]    sbatch a backend with your account/time/GPUs
-scripts/tunnel.sh    [laptop] forward the running server to localhost
-scripts/smoke_test.sh         list models + one chat completion
-```
-
-A running job writes `~/.bv_llm_host/<backend>.endpoint` (node, port, job id)
-on OSC; `tunnel.sh` reads it. Adding a backend = one new `slurm/<name>.sbatch`
-that starts the server, calls `publish_endpoint <name> <port>` and `serve_forever <stop_cmd>`.
-
-## Setup
-
-On OSC (login node) and on your laptop:
+Host LLMs and vision models on OSC GPU nodes behind an OpenAI-compatible API, with
+[vLLM](https://docs.vllm.ai) or [Ollama](https://ollama.com). Pick a model, submit one job,
+get a URL.
 
 ```bash
-git clone <this repo> && cd bv_llm_host
-cp config.env.example config.env   # fill in OSC_USER, OSC_ACCOUNT, OSC_CLUSTER
+scripts/serve.sh qwen3-8b            # start a server (a Slurm job)
+scripts/url.sh qwen3-8b --wait       # -> http://a0123.ten.osc.edu:51234/v1 once it is ready
+scripts/smoke_test.sh qwen3-8b       # one test request
+scripts/stop.sh qwen3-8b
 ```
 
-## Ollama
+## Setup (once per checkout)
+
+On an OSC login node:
 
 ```bash
-# OSC
-scripts/submit.sh ollama
-squeue -u $USER
-tail -f logs/ollama-<jobid>.out      # shows OLLAMA_MODELS, GPU, available models
-
-# laptop
-scripts/tunnel.sh ollama             # localhost:11434 -> compute node
-scripts/smoke_test.sh llama3.2:3b    # in another terminal
-
-# OSC, when done
-scancel <jobid>
+git clone https://github.com/BuckeyeVertical/bv_llm_host.git && cd bv_llm_host
+cp config.env.example config.env     # set OSC_USER, OSC_ACCOUNT, HF_CACHE, OLLAMA_CACHE
 ```
 
-By default the job uses OSC's central read-only model store. To pull your own
-models, set `OLLAMA_MODELS_DIR` (project storage, not home) and `OLLAMA_MODEL`.
+Use the same checkout from a laptop only for `scripts/tunnel.sh`. It needs just
+`OSC_USER`, `OSC_CLUSTER` and, if you set one, `STATE_DIR`.
 
-## vLLM
+## Picking a model
 
-Same flow, backend `vllm`, local port 8000:
+`scripts/serve.sh <model>` takes any of:
+
+| `<model>` | Example | Runs |
+|---|---|---|
+| a profile in [`models/`](models) | `qwen3-8b` | the profile's backend, model and flags |
+| a Hugging Face id | `Qwen/Qwen2.5-7B-Instruct` | vLLM, default flags |
+| `ollama:<tag>` | `ollama:qwen3:14b` | Ollama |
+
+A profile is a few lines of shell variables:
 
 ```bash
-scripts/submit.sh vllm                 # OSC; ~3-5 min until the endpoint line appears
-scripts/tunnel.sh vllm                 # laptop: localhost:8000 -> compute node
-scripts/smoke_test.sh Qwen/Qwen3-8B http://localhost:8000/v1
+# models/qwen3-8b.env
+BACKEND=vllm                 # vllm | ollama
+MODEL=Qwen/Qwen3-8B          # Hugging Face id or local path (vLLM), tag (Ollama)
+ARGS="--max-model-len 32768 --reasoning-parser qwen3"   # extra `vllm serve` flags
+# Optional: GPUS, JOB_TIME, PARTITION, NAME, and OLLAMA_* server settings for Ollama
 ```
 
-Models come from OSC's central Hugging Face cache unless `VLLM_HF_HOME` is set.
-Where OSC has no vllm module (Pitzer), the job activates `VLLM_VENV` instead, a venv
-you build once with `uv venv` + `uv pip install vllm==<ver>` (pin `transformers` to
-the 4.x of that vllm's era; uv otherwise pulls 5.x, which breaks older vllm). Pick a vllm built for
-CUDA 12 for V100s; `--dtype half` and no chunked prefill / prefix caching are set automatically on
-pre-Ampere GPUs.
-Env vars override config.env per submit: `VLLM_MODEL=Qwen/Qwen3-0.6B scripts/submit.sh vllm`.
-Multi-GPU: `scripts/submit.sh vllm --gpus-per-node=2` with
-`VLLM_ARGS="--tensor-parallel-size 2 --disable_custom_all_reduce"`.
-
-## Public access (no OSC account needed)
+To add a model, copy a profile and change it. Settings apply in this order, last wins:
+`config.env`, the profile, your environment. So one-off changes need no edits:
 
 ```bash
-EXPOSE=funnel scripts/submit.sh vllm                    # OSC
-EXPOSE=funnel AUTO_RESUBMIT=1 scripts/submit.sh vllm    # keep it up across walltimes
+GPUS=2 JOB_TIME=04:00:00 scripts/serve.sh qwen3-coder-30b
+scripts/serve.sh gemma-3-27b --partition=quad --mail-type=BEGIN   # extra args go to sbatch
 ```
 
-The job joins Tailscale (userspace, no root) and publishes vLLM via Funnel at
-`https://$TS_HOSTNAME.<tailnet>.ts.net/v1`. Clients need only that URL and the API key;
-no Tailscale or OSC login. Requires `~/.bv_llm_host/secrets.env` on OSC (chmod 600)
-with `TS_AUTHKEY` and `VLLM_API_KEY`, and the static Tailscale binaries in `TAILSCALE_DIR`.
+Several GPUs: set `GPUS=n` and vLLM splits the model across them
+(`--tensor-parallel-size n`) unless `ARGS` says otherwise.
 
-- Only one job holds the URL at a time (`~/.bv_llm_host/funnel.owner`, refreshed every 30s);
-  other public jobs serve privately until it is released, then take it. With `AUTO_RESUBMIT=1`
-  the successor takes over once loaded.
-- Ollama is never exposed: it has no auth.
-- A brand-new Funnel name can take several minutes before public DNS and its TLS cert work.
+**Vision models** need no extra setup. Send images as OpenAI `image_url` content parts
+(`scripts/smoke_test.sh <server> --image` checks this). vLLM's `--limit-mm-per-prompt`
+caps images per request; see `models/gemma-3-27b.env`.
 
-Tip: `tunnel.sh` makes two SSH hops; an `ssh` ControlMaster for
-`*.osc.edu` saves re-authenticating.
+**Weights.** Models already in OSC's shared stores (`/fs/ess/pub_data/vllm/.cache/huggingface`,
+`/fs/ess/pub_data/ollama/models`) are used from there. Anything else is downloaded to
+`HF_CACHE` or `OLLAMA_CACHE` on first start. To download big models ahead of time without
+using GPU hours: `scripts/download.sh <model>`.
+
+## Using a server
+
+Each server lists itself in `$STATE_DIR/endpoints/<name>` once it is ready.
+
+| Command | Does |
+|---|---|
+| `scripts/status.sh` | every server of the project: name, model, job, up / loading / pending, URL |
+| `scripts/url.sh <name> [--wait]` | the base URL, e.g. for a harness: `BASE_URL=$(scripts/url.sh qwen3-8b --wait)` |
+| `scripts/smoke_test.sh <name or url> [--image]` | list models and send one chat request |
+| `scripts/stop.sh <name>` / `--all` | cancel the job (and any queued successor) |
+| `tail -f logs/<name>-<jobid>.out` | the server's log |
+
+**From OSC** (login nodes, other jobs): use the URL as is. Any OpenAI client works:
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url=BASE_URL, api_key="none")
+model = client.models.list().data[0].id
+reply = client.chat.completions.create(model=model, messages=[{"role": "user", "content": "Hi"}])
+```
+
+**From a laptop:** `scripts/tunnel.sh <name>` forwards it to `http://localhost:8000/v1`
+(Ollama: 11434).
+
+**From anywhere, without an OSC account:** see [docs/public-access.md](docs/public-access.md)
+(vLLM only, needs an API key).
+
+**Sharing servers with a team:** set `STATE_DIR` in `config.env` to a group-writable
+directory in your project space. Everyone using that directory sees the same servers in
+`status.sh`, `url.sh` and `tunnel.sh`.
+
+Jobs bill GPU time to `OSC_ACCOUNT` until they end, so stop servers you are done with.
+
+## Layout
+
+```
+config.env.example   settings for this checkout (copy to config.env)
+models/*.env         model profiles
+scripts/             commands you run (serve, url, status, stop, tunnel, smoke_test, download)
+slurm/               the job scripts: one per backend, plus shared helpers
+docs/notes.md        clusters, GPUs, vLLM flags, troubleshooting
+docs/public-access.md  public HTTPS URL through Tailscale Funnel
+```
+
+Adding a backend means one new `slurm/<backend>.sbatch`. It starts the server on a free
+port, waits until it answers, then calls `publish_endpoint <port>` and
+`serve_forever <stop_cmd>` from `slurm/common.sh`.

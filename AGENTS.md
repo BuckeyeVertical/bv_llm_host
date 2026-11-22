@@ -1,31 +1,41 @@
 # bv_llm_host
 
-Runs LLM inference servers on OSC GPU nodes and exposes them to a laptop over an SSH tunnel. See README.md for usage.
+Runs LLM / VLM inference servers (vLLM, Ollama) as Slurm jobs on OSC GPU nodes. Usage is in
+README.md; cluster quirks and vLLM flags in docs/notes.md.
 
 ## OSC access
 
 ```bash
-ssh <user>@<cluster>.osc.edu                  # cluster: cardinal | ascend | pitzer
+ssh <user>@<cluster>.osc.edu                  # cluster: ascend | cardinal | pitzer
 ssh <user>@<cluster>.osc.edu '<command>'      # one-off command
 ```
 
-Clusters: Cardinal (H100), Ascend (A100), Pitzer (V100). GPU availability is usually Pitzer > Ascend > Cardinal, so submit on Pitzer when possible and fall back in that order.
+User, project and storage live in `config.env` (per checkout, gitignored; template
+`config.env.example`).
 
-User, project, and cluster live in `config.env` (per-machine, gitignored; template in `config.env.example`).
+## Layout and conventions
 
-## Conventions
-
-- Each backend is one `slurm/<backend>.sbatch`. It starts the server, then calls `publish_endpoint` and `serve_forever` from `slurm/common.sh`.
-- `scripts/` holds the entry points: `submit.sh` runs on OSC, `tunnel.sh` runs on the laptop.
+- `models/<name>.env`: one model profile each (`BACKEND`, `MODEL`, `ARGS`, optional `GPUS`,
+  `JOB_TIME`, `PARTITION`, `NAME`, `OLLAMA_*`). Precedence: config.env < profile < environment.
+- `scripts/`: user commands. `lib.sh` holds the config loading shared by all of them.
+  `tunnel.sh` runs on a laptop; the rest on OSC.
+- `slurm/<backend>.sbatch`: starts the server, waits for it, then `publish_endpoint` and
+  `serve_forever` from `slurm/common.sh`. `slurm/funnel.sh` is the optional public URL.
+- A running server is listed in `$STATE_DIR/endpoints/<name>` (KEY=VALUE lines, including `URL`).
+  Per-user secrets and Tailscale state stay in `~/.bv_llm_host/` regardless of `STATE_DIR`.
+- Jobs are named `llm-<name>`; `status.sh` and `stop.sh` rely on that.
 - Change code locally, push, then `git pull` on the OSC checkout.
-- Cancel jobs when done; they hold GPUs until walltime.
-- The OSC checkout, `config.env`, and `~/.bv_llm_host/` are shared by every cluster and every session. Don't change shared config for one test; set overrides per submit (`EXPOSE=funnel scripts/submit.sh vllm`).
-- Public vLLM jobs (`EXPOSE=funnel`) require `VLLM_API_KEY` from `~/.bv_llm_host/secrets.env`; clients send it as `OPENAI_API_KEY`, never print it. Private jobs (`EXPOSE=none`, the default) need no key.
-- Running guide: `docs/running_vllm.md`.
+- Cancel test jobs when done; they hold GPUs until walltime.
+- The OSC checkout and `config.env` may be shared. Make one-off changes through environment
+  overrides (`GPUS=2 scripts/serve.sh ...`), not by editing shared config.
+- Never print secrets (`VLLM_API_KEY`, `TS_AUTHKEY`, `HF_TOKEN`).
 
 ## OSC notes
 
-- Where a cluster lacks the module, the job falls back to a self-installed venv (e.g. `VLLM_VENV`). Build venvs with `uv` in a CPU batch job: `ensurepip` hangs on scratch and login nodes cap CPU time.
-- Use OSC's modules (`module load <backend>/<version>`) and their helper scripts; check `module show` for what they set.
-- Module helpers may be shell aliases, which don't expand in batch scripts. Call the underlying script.
-- OSC's helpers bind servers to `0.0.0.0`, so tunnel to `node:port` via the login node rather than SSHing into compute nodes.
+- Prefer OSC's modules (`module load vllm/<v>`, `ollama/<v>`). Their `*_start` helpers are shell
+  aliases that don't expand in batch scripts; the jobs here run `vllm serve` and the Ollama
+  Apptainer image directly instead.
+- Build venvs in a CPU batch job with `uv`: `ensurepip` hangs on scratch and login nodes cap
+  CPU time.
+- Servers bind `0.0.0.0`, so other OSC nodes reach `node:port` directly and tunnels go through
+  the login node.
