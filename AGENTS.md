@@ -15,7 +15,7 @@ User, project and storage live in `config.env` (per checkout, gitignored; templa
 
 ## Layout and conventions
 
-- `models/<name>.env`: one model profile each (`BACKEND`, `MODEL`, `ARGS`, optional `GPUS`,
+- `models/<name>.env`: one model profile each (`BACKEND`, `MODEL`, `ARGS`, optional `GPUS`, `CPUS`,
   `JOB_TIME`, `PARTITION`, `NAME`, `OLLAMA_*`). Precedence: config.env < profile < environment.
 - `scripts/`: user commands. `lib.sh` holds the config loading shared by all of them.
   `tunnel.sh` runs on a laptop; the rest on OSC.

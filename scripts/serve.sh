@@ -27,6 +27,7 @@ opts=(
   --account="$OSC_ACCOUNT"
   --time="$JOB_TIME"
   --gpus-per-node="$GPUS"
+  --cpus-per-task="${CPUS:-$((8 * GPUS))}"
   --output="$ROOT/logs/$NAME-%j.out"
   --export=ALL
 )

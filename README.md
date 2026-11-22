@@ -39,8 +39,8 @@ A profile is a few lines of shell variables:
 # models/qwen3-8b.env
 BACKEND=vllm                 # vllm | ollama
 MODEL=Qwen/Qwen3-8B          # Hugging Face id or local path (vLLM), tag (Ollama)
-ARGS="--max-model-len 32768 --reasoning-parser qwen3"   # extra `vllm serve` flags
-# Optional: GPUS, JOB_TIME, PARTITION, NAME, and OLLAMA_* server settings for Ollama
+ARGS="--max-model-len 40960 --reasoning-parser qwen3"   # extra `vllm serve` flags
+# Optional: GPUS, CPUS, JOB_TIME, PARTITION, NAME, and OLLAMA_* server settings for Ollama
 ```
 
 To add a model, copy a profile and change it. Settings apply in this order, last wins:
@@ -52,7 +52,8 @@ scripts/serve.sh gemma-3-27b --partition=quad --mail-type=BEGIN   # extra args g
 ```
 
 Several GPUs: set `GPUS=n` and vLLM splits the model across them
-(`--tensor-parallel-size n`) unless `ARGS` says otherwise.
+(`--tensor-parallel-size n`) unless `ARGS` says otherwise. CPUs default to 8 per GPU;
+set `CPUS` to change that.
 
 **Vision models** need no extra setup. Send images as OpenAI `image_url` content parts
 (`scripts/smoke_test.sh <server> --image` checks this). vLLM's `--limit-mm-per-prompt`

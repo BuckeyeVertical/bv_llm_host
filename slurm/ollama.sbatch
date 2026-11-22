@@ -1,8 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-# Submitted by scripts/serve.sh, which sets account, time, GPUs, name and log.
+# Submitted by scripts/serve.sh, which sets account, time, GPUs, CPUs, name and log.
 
 set -eo pipefail
 source "$REPO_ROOT/slurm/common.sh"
