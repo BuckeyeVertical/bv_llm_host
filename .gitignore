@@ -222,6 +222,7 @@ __marimo__/
 # bv_llm_host
 config.env
 logs/
+results/
 /.claude
 
 # Local copies of secrets (TS_AUTHKEY, VLLM_API_KEY) and macOS cruft

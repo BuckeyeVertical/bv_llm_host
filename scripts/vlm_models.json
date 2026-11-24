@@ -1,0 +1,26 @@
+{
+  "_comment": "VLMs for scripts/vlm_benchmark.py. params_b: total parameters (billions, from HF). gpus: 80 GB A100s needed. box_format: the coordinates the family emits (norm1000_xyxy | norm1000_yxyx | abs_xyxy). Optional: extra_body (added to each request), vllm_args, ignore (HF files not to download).",
+  "models": [
+    {"model": "Qwen/Qwen3-VL-2B-Instruct", "params_b": 2.1},
+    {"model": "Qwen/Qwen3-VL-4B-Instruct", "params_b": 4.4},
+    {"model": "Qwen/Qwen3.5-4B", "params_b": 4.7, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}},
+    {"model": "Qwen/Qwen2.5-VL-7B-Instruct", "params_b": 8.3, "box_format": "abs_xyxy"},
+    {"model": "OpenGVLab/InternVL3_5-8B-HF", "params_b": 8.5},
+    {"model": "Qwen/Qwen3-VL-8B-Instruct", "params_b": 8.8},
+    {"model": "mistralai/Ministral-3-8B-Instruct-2512", "params_b": 8.9, "ignore": ["consolidated*"]},
+    {"model": "Qwen/Qwen3.5-9B", "params_b": 9.7, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}},
+    {"model": "zai-org/GLM-4.6V-Flash", "params_b": 10.3, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}},
+    {"model": "google/gemma-4-12B-it", "params_b": 12.0, "box_format": "norm1000_yxyx"},
+    {"model": "mistralai/Ministral-3-14B-Instruct-2512", "params_b": 13.9, "ignore": ["consolidated*"]},
+    {"model": "OpenGVLab/InternVL3_5-14B-HF", "params_b": 15.1},
+    {"model": "mistralai/Mistral-Small-3.2-24B-Instruct-2506", "params_b": 24.0, "ignore": ["model-*", "model.safetensors.index.json"],
+     "vllm_args": ["--tokenizer-mode", "mistral", "--config-format", "mistral", "--load-format", "mistral"]},
+    {"model": "google/gemma-4-26B-A4B-it", "params_b": 25.8, "box_format": "norm1000_yxyx"},
+    {"model": "Qwen/Qwen3.8-27B-FP8", "params_b": 27.8, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}},
+    {"model": "Qwen/Qwen3-VL-30B-A3B-Instruct-FP8", "params_b": 31.1},
+    {"model": "google/gemma-4-31B-it", "params_b": 31.3, "box_format": "norm1000_yxyx"},
+    {"model": "Qwen/Qwen3-VL-32B-Instruct-FP8", "params_b": 33.4},
+    {"model": "Qwen/Qwen3.6-35B-A3B-FP8", "params_b": 36.0, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}},
+    {"model": "OpenGVLab/InternVL3_5-38B-HF", "params_b": 38.4, "gpus": 2}
+  ]
+}

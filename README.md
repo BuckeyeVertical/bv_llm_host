@@ -66,6 +66,21 @@ Env vars override config.env per submit: `VLLM_MODEL=Qwen/Qwen3-0.6B scripts/sub
 Multi-GPU: `scripts/submit.sh vllm --gpus-per-node=2` with
 `VLLM_ARGS="--tensor-parallel-size 2 --disable_custom_all_reduce"`.
 
+## VLM benchmark (Ascend)
+
+```bash
+# once: ROBOFLOW_API_KEY=... in ~/.bv_llm_host/secrets.env (chmod 600)
+mkdir -p logs
+VLM_DATASET=workspace/project/1 sbatch slurm/vlm_benchmark.sbatch --limit 20 --models Qwen/Qwen3-VL-2B-Instruct  # try one first
+VLM_DATASET=workspace/project/1 sbatch slurm/vlm_benchmark.sbatch
+```
+
+Tests every model in `scripts/vlm_models.json` (up to 60B parameters) on a Roboflow detection or
+single-label classification dataset and writes `results/vlm/<dataset>/report.md` and `results.csv`
+(accuracy, speed, resource usage). Resubmit to continue after walltime. `scripts/vlm_test.py` tests
+a single model; `vlm_benchmark.py --download-only` fetches weights ahead of time. Weights go to
+`VLM_HF_HOME` (default `/fs/scratch/$OSC_ACCOUNT/$USER/hf`).
+
 ## Public access (no OSC account needed)
 
 ```bash
